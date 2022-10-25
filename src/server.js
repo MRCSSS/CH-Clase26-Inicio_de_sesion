@@ -2,6 +2,7 @@
 // import connectMongo from 'connect-mongo';
 import * as dotenv from 'dotenv';
 import express from 'express';
+import bcrypt from 'bcrypt';
 // import session from 'express-session';
 import { createServer } from 'http';
 // import morgan from 'morgan';
