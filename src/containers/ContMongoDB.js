@@ -1,12 +1,10 @@
 /* ---------------------- MODULOS IMPORTADOS ------------------------ */
 import mongoose from 'mongoose';
-import config from '../config.js';
 import moment from 'moment';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
 
-// await mongoose.connect(config.mongodb.cnxStr);
 await mongoose.connect(process.env.MONGO_URL);
 
 /* ------------------------ CLASE CONTENEDOR ------------------------ */

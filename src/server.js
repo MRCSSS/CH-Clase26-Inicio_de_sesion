@@ -1,140 +1,163 @@
-/* ---------------------------- MODULOS ----------------------------- */
-// import connectMongo from 'connect-mongo';
+/* ============================ MODULOS ============================= */
+import bcrypt from 'bcrypt';
+import connectMongo from 'connect-mongo';
 import * as dotenv from 'dotenv';
 import express from 'express';
-import bcrypt from 'bcrypt';
-// import session from 'express-session';
-import { createServer } from 'http';
-// import morgan from 'morgan';
-// import { normalize, schema } from 'normalizr';
-import path from 'path';
-// import { Server } from 'socket.io';
-// import { msgsDao, productsDao } from './daos/index.js';
 import { create } from 'express-handlebars';
+import session from 'express-session';
+import { createServer } from 'http';
+import { normalize, schema } from 'normalizr';
+import passport from "passport";
+import { Strategy as LocalStrategy } from "passport-local";
+import path from 'path';
+import { Server } from 'socket.io';
+import { msgsDao, productsDao, usersDao } from './daos/index.js';
+import register from './routes/register.routes.js';
 
 dotenv.config();
 
-/* ---------------------- INSTANCIA DE SERVER ----------------------- */
+/* ====================== INSTANCIA DE SERVER ======================= */
 const app = express();
 const httpServer = createServer(app);
-// const io = new Server(httpServer);
+const io = new Server(httpServer);
 const exphbs = create({
-    // layoutsDir: path.join(app.get('src/views'), 'layouts'),
-    // partialsDir: path.join(app.get('src/views'), 'partials'),
     defaultLayout: null,
     extname: 'hbs'
 })
 
-/* ------------------ PERSISTENCIA DE SESION MONGO ------------------ */
-// const MongoStore = connectMongo.create({
-//     mongoUrl: process.env.MONGO_URL,
-//     ttl: 10 *60 // Minutos *60
-// })
+/* ================== PERSISTENCIA DE SESION MONGO ================== */
+const MongoStore = connectMongo.create({
+    mongoUrl: process.env.MONGO_URL,
+    ttl: 10 *60 // Minutos *60
+})
 
-/* ---------------------- MOTOR DE PLANTILLAS -----------------------*/
-app.engine('hbs', exphbs.engine);
-app.set('views', path.join(process.cwd(), 'views'));
-app.set('view engine', 'hbs');
-
-/* -------------------------- MIDDLEWARES --------------------------- */
+/* ========================== MIDDLEWARES =========================== */
 app.use(express.static('public'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true}));
-// app.use(morgan('dev'));
 
-//Session Setup
-// app.use(session({
-//     store: MongoStore,
-//     secret: process.env.SECRET_KEY,
-//     resave: true,
-//     saveUninitialized: false,
-//     rolling: true
-// }))
+    /* --------------------- Session Setup --------------------- */
+app.use(session({
+    store: MongoStore,
+    secret: process.env.SECRET_KEY,
+    resave: false,
+    saveUninitialized: false,
+    rolling: true
+}))
 
-// Session Middleware
-// function auth(req, res, next) {
-//     if (req.session?.user && req.session?.admin) {
-//         res.render('layouts/home', { user: req.session.user });
-//         return next()
-//     }
-//     return res.redirect('/logout');
+    /* ----------------- Session Authorization ----------------- */
+function auth(req, res, next) {
+    if(req.isAuthenticated()){
+        return next()
+    }
+    return res.redirect('/');
+}
 
-// }
+    /* ----------------------- Passport ------------------------ */
+passport.use(new LocalStrategy(
+    async function(username, password, done) {
+        const user = await usersDao.searchUser(username);
 
-/* ------------------------------ RUTAS ----------------------------- */
-// app.get('/', (req, res) => {
-//     if(!req.session.user) {
-//         res.redirect('/login');
-//     } else {
-//         res.redirect('/home');
-//     }
-// })
+        if (user === null) {
+            return done(null, false);
+        } else {
+            const match = await bcrypt.compare(password, user.password);
 
-// app.get('/login', (req, res) => {
-//     res.render('layouts/login');
-// });
+            if(!match){
+                return done(null, false);
+            }
+            return done(null, user);
+        }
+    }
+));
 
-// app.get('/authentication', (req, res) => {
-//     const { loginName } = req.query
+passport.serializeUser((user, done)=>{
+    done(null, user.username);
+});
 
-//     if (loginName !== '' ) {
-//         req.session.user = loginName;
-//         req.session.admin = true;
+passport.deserializeUser( async (username, done)=>{
+    const user = await usersDao.searchUser(username);
+    done(null, user);
+});
 
-//         return res.redirect('/home');
-//     }
-//     res.send('login failed')
-// })
+app.use(passport.initialize());
+app.use(passport.session());
 
-// app.get('/home', auth, (req, res) => {
-// });
+    /* ------------------ Motor de Plantillas ------------------ */
+app.engine('hbs', exphbs.engine);
+app.set('views', path.join(process.cwd(), 'src/views'));
+app.set('view engine', 'hbs');
 
-// app.get('/logout', (req, res)=> {
-//     const user = req.session.user;
+/* ============================== RUTAS ============================= */
+app.get('/', (req, res) => {
+    if(!req.session.user) {
+        res.redirect('/login');
+    } else {
+        res.redirect('/home');
+    }
+})
 
-//     req.session.destroy(err=>{
-//         if (err) {
-//             res.json({err});
-//         } else {
-//             res.render('layouts/logout', { user: user });
-//         }
-//     });
-// });
+app.get('/home', auth, async (req, res) => {
+    const user = await usersDao.searchUser(req.session.passport.user);
+    res.render('partials/home', {layout: 'home', user: user.username , email: user.email});
+});
 
-// app.get('*', async (request, response) => {
-//     response.status(404).send('404 - Page not found!!');
-// });
+app.get('/login', (req, res) => {
+    res.render('partials/login', {layout: 'login'});
+});
 
-/* --------------------- NORMALIZANDO MENSAJES ----------------------*/
-// const authorSchema = new schema.Entity('author', {}, { idAttribute: 'email' });
-// const messageSchema = new schema.Entity('post', { author: authorSchema }, { idAttribute: 'id' });
-// const msgsSchema = new schema.Entity('posts', { messages: [messageSchema] }, { idAttribute: 'id' });
+app.post('/login', passport.authenticate('local', {
+    successRedirect: '/home', 
+    failureRedirect: '/login-error'
+}));
 
-// const normalizing = (fullMsgs) => normalize(fullMsgs, msgsSchema);
+app.get('/login-error', (req, res)=>{
+    res.render('partials/login-error', {layout: 'login'});
+})
 
-// async function getAllNormalized() {
-//     const msgs = await msgsDao.getAll();
-//     const normalized = normalizing({ id: 'messages', msgs})
+app.get('/logout', async (req, res)=> {
+    const user = await usersDao.searchUser(req.session.passport.user);
 
-//     return normalized;
-// }
+    req.session.destroy(err=>{
+        if (err) {
+            res.json({err});
+        } else {
+            res.render('partials/logout', { layout: 'logout', user: user.username });
+        }
+    });
+});
 
-/* ---------------------------- WEBSOCKET ---------------------------*/
-// io.on('connection', async (socket) => {
-//     console.log(`Client conected: ${socket.id}`);
+app.use('/register', register);
 
-//     socket.emit('serv-msgs', await getAllNormalized());
-//     socket.emit('serv-prods', await productsDao.getAll());
+/* ===================== NORMALIZANDO MENSAJES ====================== */
+const authorSchema = new schema.Entity('author', {}, { idAttribute: 'email' });
+const messageSchema = new schema.Entity('post', { author: authorSchema }, { idAttribute: 'id' });
+const msgsSchema = new schema.Entity('posts', { messages: [messageSchema] }, { idAttribute: 'id' });
+const normalizing = (fullMsgs) => normalize(fullMsgs, msgsSchema);
 
-//     socket.on('client-msg', async (msg) => {
-//         await msgsDao.save(msg);
-//         io.sockets.emit('serv-msgs', await getAllNormalized());
-//     })
-//     socket.on('client-prods', async (prod) => {
-//         await productsDao.save(prod);
-//         io.sockets.emit('serv-prods', await productsDao.getAll());
-//     })
-// })
+async function getAllNormalized() {
+    const msgs = await msgsDao.getAll();
+    const normalized = normalizing({ id: 'messages', msgs})
 
-/* ---------------------- MODULOS EXPORTADOS ------------------------ */
+    return normalized;
+}
+
+/* ============================ WEBSOCKET =========================== */
+io.on('connection', async (socket) => {
+    console.log(`Client conected: ${socket.id}`);
+
+    socket.emit('serv-msgs', await getAllNormalized());
+    socket.emit('serv-prods', await productsDao.getAll());
+
+    socket.on('client-msg', async (msg) => {
+        await msgsDao.save(msg);
+        io.sockets.emit('serv-msgs', await getAllNormalized());
+    })
+    socket.on('client-prods', async (prod) => {
+        await productsDao.save(prod);
+        io.sockets.emit('serv-prods', await productsDao.getAll());
+    })
+})
+
+/* ====================== MODULOS EXPORTADOS ======================== */
 export default httpServer;

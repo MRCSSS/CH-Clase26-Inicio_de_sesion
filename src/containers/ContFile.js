@@ -7,7 +7,6 @@ import * as dotenv from 'dotenv';
 /* ------------------------ CLASE CONTENEDOR ------------------------ */
 class ContFile {
     constructor(path) {
-        // this.path = `${config.fileSystem.path}/${path}`;
         this.path = `${process.env.FILESYSTEM_PATH}/${path}`;
     }
 
